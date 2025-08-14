@@ -43,6 +43,162 @@ export class TaskEngine {
     this.configBuilder = options.configBuilder || new DefaultConfigurationBuilder();
     this.promptBuilder = new SimplePromptBuilder(options.promptStrategy);
     this.strategy = options.strategy;
+    
+    // Fix Gemini CLI retry logic bug
+    this.fixGeminiCliRetryBug();
+  }
+  
+  /**
+   * Fix the Gemini CLI retry bug where /5\d{2}/ regex incorrectly matches token counts
+   * This monkey-patch ensures only actual HTTP 5xx status codes trigger retries
+   */
+  private fixGeminiCliRetryBug(): void {
+    // Since direct module patching is blocked, let's use a different approach
+    // We'll monkey-patch the String.prototype.match method temporarily when needed
+    console.warn('Applying Gemini CLI retry bug workaround via console interception');
+    this.setupConsoleInterception();
+    
+    // Also try to patch the global String match method more carefully
+    try {
+      const originalStringMatch = String.prototype.match;
+      
+      (String.prototype as any).match = function(regexp: RegExp | string): RegExpMatchArray | null {
+        // If this is the problematic regex and we're in a retry context
+        if (regexp instanceof RegExp && regexp.source === '5\\d{2}') {
+          const stack = new Error().stack;
+          if (stack && (stack.includes('shouldRetry') || stack.includes('retryWithBackoff') || stack.includes('defaultShouldRetry'))) {
+            // For the problematic pattern, use a more precise match
+            if (this.includes('token count') && this.includes('400')) {
+              // This is a token limit error, don't match as 5xx
+              return null;
+            }
+            // Use word boundary version of the regex to avoid matching token counts
+            return originalStringMatch.call(this, /\b5[0-9]{2}\b/);
+          }
+        }
+        
+        return originalStringMatch.call(this, regexp as any);
+      };
+      
+      console.log('Applied String.prototype.match patch for retry bug fix');
+    } catch (error) {
+      console.warn('Failed to patch String.prototype.match, relying on console interception only');
+    }
+  }
+  
+  private setupConsoleInterception(): void {
+    const originalError = console.error;
+    const originalWarn = console.warn;
+    
+    console.error = (...args: any[]) => {
+      const message = args[0];
+      if (typeof message === 'string' && 
+          message.includes('failed with 5xx error') && 
+          args[1] && 
+          typeof args[1] === 'object') {
+        
+        // Extract the actual error and check if it's really a 5xx error
+        const error = args[1];
+        const isActual5xx = this.isActual5xxError(error);
+        
+        if (!isActual5xx) {
+          // This is not a real 5xx error, format it properly
+          const cleanMessage = this.formatRetryErrorMessage(message, error);
+          originalWarn(cleanMessage); // Use warn instead of error for non-5xx
+          return;
+        }
+      }
+      
+      // Let real errors through
+      originalError(...args);
+    };
+    
+    console.warn = (...args: any[]) => {
+      const message = args[0];
+      if (typeof message === 'string' && 
+          message.includes('failed with') && 
+          args[1]) {
+        
+        // Format retry warnings consistently
+        const cleanMessage = this.formatRetryErrorMessage(message, args[1]);
+        originalWarn(cleanMessage);
+        return;
+      }
+      
+      originalWarn(...args);
+    };
+  }
+  
+  private isActual5xxError(error: any): boolean {
+    // Check if it's actually a 5xx HTTP status code
+    if (error && typeof error === 'object') {
+      // Check status property
+      if (typeof error.status === 'number' && error.status >= 500 && error.status < 600) {
+        return true;
+      }
+      
+      // Check response.status property
+      if (error.response && typeof error.response.status === 'number' && 
+          error.response.status >= 500 && error.response.status < 600) {
+        return true;
+      }
+      
+      // Check for actual HTTP 5xx in error message (not token counts)
+      const message = error.message || error.toString();
+      // More precise regex: match HTTP status codes, not arbitrary numbers
+      if (message && message.match(/\b5[0-9]{2}\b/)) {
+        return true;
+      }
+    }
+    
+    return false;
+  }
+  
+  private formatRetryErrorMessage(message: string, error: any): string {
+    try {
+      // Extract structured error information for clean display
+      let errorDetails: any = null;
+      
+      if (error && typeof error === 'object') {
+        // Try to extract JSON error
+        const errorStr = error.toString();
+        const jsonMatch = errorStr.match(/\[(\{.*?\})\]/);
+        if (jsonMatch) {
+          try {
+            const errorArray = JSON.parse(jsonMatch[1]);
+            if (errorArray && errorArray.error) {
+              errorDetails = errorArray.error;
+            }
+          } catch (e) {
+            // Fallback to direct parsing
+            const directMatch = errorStr.match(/\{[\s\S]*?"error"[\s\S]*?\}/);
+            if (directMatch) {
+              const parsed = JSON.parse(directMatch[0]);
+              if (parsed.error) {
+                errorDetails = parsed.error;
+              }
+            }
+          }
+        }
+      }
+      
+      if (errorDetails) {
+        const attemptMatch = message.match(/Attempt (\d+)/);
+        const attemptNum = attemptMatch ? attemptMatch[1] : '?';
+        
+        // Format like Gemini CLI but with correct error categorization
+        if (errorDetails.code === 400) {
+          return `⚠️  Attempt ${attemptNum}: ${errorDetails.message} (Code: ${errorDetails.code}) - Not retrying 400 errors`;
+        } else {
+          return `⚠️  Attempt ${attemptNum}: ${errorDetails.message} (Code: ${errorDetails.code}) - retrying...`;
+        }
+      }
+      
+      // Fallback to original message but cleaned up
+      return message.replace(/\s+GaxiosError:.*$/s, ''); // Remove verbose stack trace
+    } catch (e) {
+      return message; // If formatting fails, return original
+    }
   }
 
   async executeTask(request: TaskRequest): Promise<TaskResult> {
@@ -158,24 +314,60 @@ export class TaskEngine {
         
         const functionCalls: FunctionCall[] = [];
 
-        const responseStream = await chat.sendMessageStream(
-          {
-            message: currentMessages[0]?.parts || [], // Ensure parts are always provided
-            config: {
-              abortSignal: abortController.signal,
-              // Restore tools - they may be necessary for proper response formatting
-              tools: [
-                { functionDeclarations: toolRegistry.getFunctionDeclarations() },
-              ],
-              // Allow internal thinking but hide thought output to prevent fragmented text
-              thinkingConfig: {
-                includeThoughts: false    // Don't include thought summaries in response
-                // Keep thinkingBudget at default - model can still think internally
+        let responseStream;
+        try {
+          responseStream = await chat.sendMessageStream(
+            {
+              message: currentMessages[0]?.parts || [], // Ensure parts are always provided
+              config: {
+                abortSignal: abortController.signal,
+                // Restore tools - they may be necessary for proper response formatting
+                tools: [
+                  { functionDeclarations: toolRegistry.getFunctionDeclarations() },
+                ],
+                // Allow internal thinking but hide thought output to prevent fragmented text
+                thinkingConfig: {
+                  includeThoughts: false    // Don't include thought summaries in response
+                  // Keep thinkingBudget at default - model can still think internally
+                },
               },
             },
-          },
-          request.sessionId,
-        );
+            request.sessionId,
+          );
+        } catch (apiError) {
+          // Handle API-level errors (token limits, network issues, etc.)
+          const errorMessage = apiError instanceof Error ? apiError.message : String(apiError);
+          
+          // Check if this is a recoverable error that LLM can handle
+          if (this.isRecoverableError(errorMessage)) {
+            console.log(`Recoverable API error detected: ${errorMessage}`);
+            
+            // Create error message for LLM to process
+            const errorFeedback = this.formatErrorForLLM(errorMessage, turnCount);
+            currentMessages = [{
+              role: 'user',
+              parts: [{ text: errorFeedback }]
+            }];
+            
+            // Update status to show error handling
+            this.updateStatus({
+              currentAction: { 
+                type: 'thinking', 
+                description: `Turn ${this.sessionTurnCount} - handling API error...` 
+              },
+              llmStream: {
+                partialText: errorFeedback,
+                isComplete: true
+              }
+            });
+            
+            // Continue to next iteration to let LLM handle the error
+            continue;
+          } else {
+            // This is a fatal error - rethrow to be caught by outer try-catch
+            throw apiError;
+          }
+        }
 
         let hasStreamContent = false;
         let accumulatedText = '';
@@ -507,6 +699,44 @@ export class TaskEngine {
     }
     
     return turnProgress;
+  }
+
+  private isRecoverableError(errorMessage: string): boolean {
+    // Define patterns for recoverable errors that LLM can handle
+    const recoverablePatterns = [
+      /token.*count.*exceeds.*maximum/i,           // Token limit exceeded
+      /input.*token.*count.*exceeds/i,             // Input token limit
+      /context.*length.*exceeded/i,                // Context length issues
+      /request.*too.*large/i,                      // Request size issues
+      /rate.*limit.*exceeded/i,                    // Rate limiting (temporary)
+      /quota.*exceeded/i,                          // Quota issues (might be temporary)
+      /service.*temporarily.*unavailable/i,        // Temporary service issues
+      /timeout/i,                                  // Request timeouts
+      /network.*error/i,                           // Network connectivity issues
+      /connection.*reset/i,                        // Connection issues
+      /temporary.*failure/i                        // Any temporary failure
+    ];
+    
+    return recoverablePatterns.some(pattern => pattern.test(errorMessage));
+  }
+
+  private formatErrorForLLM(errorMessage: string, turnCount: number): string {
+    // Match Gemini CLI's concise error format
+    if (/token.*count.*exceeds/i.test(errorMessage)) {
+      return `✕ [API Error: Token limit exceeded]\n\nConsider using smaller parameters (e.g., maxResults: "50" instead of "0") or processing data in chunks.`;
+    } 
+    
+    if (/rate.*limit|quota.*exceeded/i.test(errorMessage)) {
+      return `✕ [API Error: Rate/quota limit exceeded]\n\nTry using fewer API calls or wait before retrying.`;
+    } 
+    
+    if (/timeout|network.*error|connection/i.test(errorMessage)) {
+      return `✕ [API Error: Network/timeout issue]\n\nYou can retry the same operation or try an alternative approach.`;
+    }
+    
+    // Extract the core error message for display
+    const coreError = errorMessage.replace(/^Error:\s*/i, '').split('\n')[0];
+    return `✕ [API Error: ${coreError}]`;
   }
 
   private isValidResponse(response: GenerateContentResponse): boolean {

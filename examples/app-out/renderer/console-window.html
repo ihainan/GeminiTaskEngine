@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>D:\Documents and Settings\All Users\Documents\FastFieldSolvers\FasterCap\woven...</title>
+    <link rel="stylesheet" href="index.css">
+    <style>
+        body { background-color: #F0F0F0; margin: 0; padding: 0; display: flex; flex-direction: column; height: 100vh; }
+        .menu-bar { background-color: #E0E0E0; padding: 5px; border-bottom: 1px solid #C0C0C0; font-size: 0.9em; }
+        textarea { flex-grow: 1; width: calc(100% - 10px); height: calc(100% - 30px); border: none; resize: none; font-family: monospace; padding: 5px; background-color: #FFFFFF; }
+    </style>
+</head>
+<body>
+    <div class="menu-bar">
+        File Edit View FasterCap Help
+    </div>
+    <textarea id="console-output" readonly></textarea>
+    <script>
+        window.addEventListener('DOMContentLoaded', async () => {
+            const content = await window.api.getSimulatedConsoleOutput();
+            document.getElementById('console-output').value = content;
+        });
+    </script>
+</body>
+</html>

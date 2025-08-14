@@ -11,7 +11,7 @@ npm run build
 
 ## Usage
 
-The TaskEngine allows you to execute complex tasks by defining custom strategies and prompt builders. See `test-simple.js` for a complete example of how to use the TaskEngine.
+The TaskEngine allows you to execute complex tasks by defining custom strategies and prompt builders. See the examples in the `examples/` directory for complete working examples.
 
 ### Basic Usage
 
@@ -74,7 +74,42 @@ const result = await engine.executeTask({
 console.log('Task completed:', result.success);
 ```
 
-### Example Implementation
+## Examples
 
-For a complete working example, refer to `test-simple.js` which demonstrates how to create custom task and prompt strategies, handle status updates, and implement complex workflows.
+The TaskEngine includes several example implementations in the `examples/` directory:
+
+### Available Examples
+
+1. **examples/test-simple.js** - Basic binary analysis example
+   - Demonstrates simple task and prompt strategies
+   - Shows how to handle status updates and implement workflows
+   - Uses Ghidra MCP for binary modification tasks
+
+2. **examples/test-appsynth.js** - AppSynth implementation  
+   - Advanced example for generating Electron desktop applications
+   - Analyzes binary files using Ghidra MCP and creates functional apps
+   - Includes complete workflow from binary analysis to app packaging
+   - Targets Windows x64 platform with FasterCap binary example
+
+### Running Examples
+
+```bash
+# Build the project first
+npm run build
+
+# Run the simple binary analysis example  
+node examples/test-simple.js
+
+# Run the AppSynth Electron app generation example
+node examples/test-appsynth.js
+```
+
+### Example Implementation Details
+
+Both examples demonstrate:
+- Custom task strategies with workflow definitions
+- Progress tracking and status updates  
+- Error handling and fatal error patterns
+- Integration with MCP (Model Context Protocol) servers
+- Structured prompt building for complex tasks
 

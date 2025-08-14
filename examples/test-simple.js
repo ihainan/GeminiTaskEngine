@@ -2,7 +2,7 @@
  * TaskEngine test program with plain text output (like CLI non-interactive mode)
  */
 
-import { TaskEngine } from './dist/index.js';
+import { TaskEngine } from '../dist/index.js';
 import fs from 'fs';
 import path from 'path';
 

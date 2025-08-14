@@ -1,0 +1,106 @@
+body {
+    font-family: sans-serif;
+    margin: 0;
+    padding: 0;
+    overflow: hidden; /* Prevent scrollbars on the main window */
+    background-color: #F0F0F0; /* Light grey, mimicking classic Windows */
+}
+
+.container {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    border: 1px solid #808080;
+}
+
+.menu-bar {
+    background-color: #E0E0E0;
+    padding: 5px;
+    border-bottom: 1px solid #C0C0C0;
+    font-size: 0.9em;
+}
+
+.toolbar {
+    background-color: #E0E0E0;
+    padding: 5px;
+    border-bottom: 1px solid #C0C0C0;
+    display: flex;
+    gap: 5px;
+}
+
+.toolbar button {
+    padding: 3px 8px;
+    border: 1px solid #808080;
+    background-color: #F0F0F0;
+    cursor: pointer;
+}
+
+.main-content {
+    display: flex;
+    flex-grow: 1;
+    overflow: hidden;
+}
+
+.left-pane {
+    width: 200px;
+    background-color: #F0F0F0;
+    border-right: 1px solid #C0C0C0;
+    display: flex;
+    flex-direction: column;
+}
+
+.pane-header {
+    background-color: #E0E0E0;
+    padding: 5px;
+    border-bottom: 1px solid #C0C0C0;
+    font-weight: bold;
+    font-size: 0.9em;
+}
+
+.tree-view {
+    flex-grow: 1;
+    padding: 5px;
+    overflow-y: auto;
+}
+
+.tree-view ul {
+    list-style-type: none;
+    padding-left: 15px;
+}
+
+.tree-view li {
+    margin-bottom: 3px;
+}
+
+.center-pane {
+    flex-grow: 1;
+    background-color: #ADD8E6; /* Light blue, mimicking the screenshot */
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    overflow: hidden;
+}
+
+#three-d-canvas {
+    width: 100%;
+    height: 100%;
+    display: block;
+}
+
+.bottom-pane {
+    height: 150px;
+    background-color: #F0F0F0;
+    border-top: 1px solid #C0C0C0;
+    display: flex;
+    flex-direction: column;
+}
+
+#output-log {
+    flex-grow: 1;
+    width: calc(100% - 10px);
+    padding: 5px;
+    border: none;
+    resize: none;
+    font-family: monospace;
+    background-color: #FFFFFF;
+}
