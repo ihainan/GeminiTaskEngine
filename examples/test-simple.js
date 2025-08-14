@@ -71,7 +71,77 @@ function formatOutput(event) {
   // Show tool results
   if (updates.toolResult) {
     const status = updates.toolResult.status === 'error' ? 'ERROR' : 'OK';
-    console.log(`   ${status} Result (${updates.toolResult.duration}ms): ${updates.toolResult.result.substring(0, 500)}${updates.toolResult.result.length > 500 ? '...' : ''}`);
+    let resultText = '';
+    
+    try {
+      const result = updates.toolResult.result;
+      
+      // Handle different result types
+      if (typeof result === 'string') {
+        resultText = result;
+      } else if (typeof result === 'object' && result !== null) {
+        // Always try to stringify objects properly, don't rely on toString() check
+        try {
+          if (Array.isArray(result)) {
+            if (result.length === 0) {
+              resultText = 'Array(0): []';
+            } else if (result.length <= 3) {
+              resultText = `Array(${result.length}): ${JSON.stringify(result, null, 2)}`;
+            } else {
+              resultText = `Array(${result.length}): ${JSON.stringify(result.slice(0, 3), null, 2)}...`;
+            }
+          } else {
+            // For objects, always try JSON.stringify first
+            const jsonStr = JSON.stringify(result, null, 2);
+            if (jsonStr && jsonStr !== '{}' && jsonStr !== 'null') {
+              resultText = jsonStr;
+            } else {
+              // Fallback for special objects
+              const keys = Object.keys(result);
+              if (keys.length === 0) {
+                resultText = 'Object: {}';
+              } else {
+                resultText = `Object(${keys.length} keys): [${keys.slice(0, 5).join(', ')}${keys.length > 5 ? ', ...' : ''}]`;
+              }
+            }
+          }
+        } catch (jsonError) {
+          // Last resort: try to extract some meaningful info
+          try {
+            const keys = Object.keys(result);
+            resultText = `Object(${keys.length} keys): [${keys.slice(0, 3).join(', ')}] - JSON Error: ${jsonError.message}`;
+          } catch (keysError) {
+            resultText = `[Unformattable Object - ${jsonError.message}]`;
+          }
+        }
+      } else if (result === null) {
+        resultText = 'null';
+      } else if (result === undefined) {
+        resultText = 'undefined';
+      } else {
+        resultText = String(result);
+      }
+      
+      // Handle error objects specifically  
+      if (resultText.includes('[Error:') || resultText.includes('Error:') || 
+          (typeof result === 'object' && result !== null && result.constructor && result.constructor.name === 'Error')) {
+        console.log(`   ERROR Result (${updates.toolResult.duration}ms): ${resultText}`);
+        return;
+      }
+      
+      // Special handling for null errors
+      if (result === null && updates.toolResult.status === 'error') {
+        console.log(`   ERROR Result (${updates.toolResult.duration}ms): Error returned null`);
+        return;
+      }
+      
+    } catch (e) {
+      resultText = `[Format Error: ${e.message}]`;
+    }
+    
+    // Truncate long results
+    const displayText = resultText.length > 500 ? resultText.substring(0, 500) + '...' : resultText;
+    console.log(`   ${status} Result (${updates.toolResult.duration}ms): ${displayText}`);
   }
 
   // Show result message (final statistics)

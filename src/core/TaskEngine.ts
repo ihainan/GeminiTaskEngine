@@ -240,22 +240,45 @@ export class TaskEngine {
         
         // Handle tool results (in user messages)
         if (msg.type === 'user' && msg.message?.content) {
-          const resultContent = Array.isArray(msg.message.content) 
-            ? msg.message.content.map((part: any) => part.text || part.content || '').join('')
-            : msg.message.content;
+          let resultContent: any;
           
-          if (resultContent && resultContent.trim()) {
+          if (Array.isArray(msg.message.content)) {
+            // Handle array of content parts
+            resultContent = msg.message.content.map((part: any) => {
+              if (part.type === 'tool_result') {
+                // Return the actual tool result data, not just text
+                return part.content || part.result || part.text || part;
+              }
+              return part.text || part.content || part;
+            });
+            
+            // If only one item and it's the actual result, unwrap it
+            if (resultContent.length === 1) {
+              resultContent = resultContent[0];
+            }
+          } else {
+            resultContent = msg.message.content;
+          }
+          
+          if (resultContent !== null && resultContent !== undefined) {
             // Find the most recent pending tool
             const pendingEntries = Array.from(this.pendingTools.entries());
             if (pendingEntries.length > 0) {
               const [toolId, toolInfo] = pendingEntries[pendingEntries.length - 1];
               
-              // Send tool result event
+              // Determine status based on content
+              let status: 'completed' | 'error' = 'completed';
+              const contentStr = typeof resultContent === 'string' ? resultContent : JSON.stringify(resultContent);
+              if (contentStr && (contentStr.includes('error') || contentStr.includes('Error') || contentStr.includes('[Error:'))) {
+                status = 'error';
+              }
+              
+              // Send tool result event with the raw result data
               this.emitEvent({
                 toolResult: {
                   id: toolId,
-                  result: resultContent,
-                  status: resultContent.includes('error') ? 'error' : 'completed',
+                  result: resultContent, // Pass the raw result, let the formatter handle it
+                  status: status,
                   duration: Date.now() - toolInfo.startTime
                 }
               });
