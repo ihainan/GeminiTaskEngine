@@ -30,5 +30,17 @@ coverage/
 *.lcov
 
 # Logs
-logs
+logs/
 *.log
+
+# Test generated files and directories
+examples/app-out/
+examples/*.zip
+app-out/
+*.zip
+test-message-format.js
+test.txt
+file_operations_demo.py
+calculator.py
+__pycache__/
+*.pyc
