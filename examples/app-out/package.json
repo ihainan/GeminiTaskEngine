@@ -1,19 +1,39 @@
 {
-  "name": "faster-cap",
+  "name": "fastercap-desktop",
   "version": "1.0.0",
-  "description": "A reimplementation of the FasterCap application.",
+  "description": "FasterCap Desktop - 3D Capacitance Calculation Tool",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
-    "build:win": "electron-builder --dir --win --x64",
-    "build:mac": "electron-builder --dir --mac --x64",
-    "build:linux": "electron-builder --dir --linux --x64"
+    "build": "electron-builder --win --x64",
+    "build:win": "electron-builder --win --x64"
   },
-  "keywords": [],
   "author": "AppSynth",
   "license": "MIT",
   "devDependencies": {
-    "electron": "31.2.0",
-    "electron-builder": "24.13.3"
+    "electron": "23.3.13",
+    "electron-builder": "24.6.4"
+  },
+  "dependencies": {
+    "three": "0.155.0"
+  },
+  "build": {
+    "appId": "com.appsynth.fastercap",
+    "productName": "FasterCap Desktop",
+    "directories": {
+      "buildResources": "build"
+    },
+    "win": {
+      "target": {
+        "target": "nsis",
+        "arch": [
+          "x64"
+        ]
+      }
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    }
   }
 }
