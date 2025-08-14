@@ -36,7 +36,7 @@ export class TaskEngine {
 
   private startTime = 0;
   private sessionTurnCount = 0;
-  private readonly MAX_TURNS = 100; // Hard limit from GeminiClient
+  private readonly MAX_TURNS = 200; // Hard limit increased for complex tasks
 
   constructor(options: TaskEngineOptions) {
     this.statusCallback = options.onStatusUpdate;
@@ -543,14 +543,19 @@ export class TaskEngine {
           currentMessages = [{ role: 'user', parts: toolResponseParts }];
         } else {
           // No tool calls in this turn - use smart continuation mechanism
+          console.log(`[TaskEngine] Turn ${this.sessionTurnCount}: No tool calls, checking task completion`);
           
           // Check if task is completed using strategy
           const isCompleted = this.strategy 
             ? this.strategy.isTaskComplete(this.currentStatus.toolCalls)
             : false;
           
+          console.log(`[TaskEngine] Strategy completion check: ${isCompleted}`);
+          console.log(`[TaskEngine] Current tool calls: ${this.currentStatus.toolCalls.map(tc => `${tc.name}(${tc.status})`).join(', ')}`);
+          
           if (isCompleted) {
             // Task truly completed, normal exit
+            console.log(`[TaskEngine] Task marked as completed by strategy, exiting loop`);
             this.updateStatus({
               sessionState: 'completed',
               progress: { ...this.currentStatus.progress, percentage: 100 }
@@ -559,6 +564,7 @@ export class TaskEngine {
           }
           
           // Use GeminiClient's smart continuation mechanism
+          console.log(`[TaskEngine] Calling checkNextSpeaker to determine continuation`);
           try {
             this.updateStatus({
               currentAction: { type: 'thinking', description: 'Determining if conversation should continue...' }
@@ -569,6 +575,8 @@ export class TaskEngine {
               geminiClient,
               abortController.signal,
             );
+            
+            console.log(`[TaskEngine] NextSpeaker result: ${JSON.stringify(nextSpeakerCheck, null, 2)}`);
             
             if (nextSpeakerCheck?.next_speaker === 'model') {
               // LLM indicates it should continue - send "Please continue."
@@ -623,6 +631,8 @@ export class TaskEngine {
       }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
+      console.log(`[TaskEngine] Caught error in main execution loop: ${errorMessage}`);
+      console.log(`[TaskEngine] Error stack: ${error instanceof Error ? error.stack : 'No stack'}`);
       executionError = errorMessage;
       finalSuccess = false;
     } finally {
@@ -630,6 +640,24 @@ export class TaskEngine {
       if (isTelemetrySdkInitialized()) {
         await shutdownTelemetry(this.config);
       }
+    }
+
+    // Enhanced logging for task completion analysis
+    console.log(`[TaskEngine] Task execution completed:`);
+    console.log(`  - Final success: ${finalSuccess}`);
+    console.log(`  - Execution error: ${executionError || 'None'}`);
+    console.log(`  - Turn count: ${this.sessionTurnCount}`);
+    console.log(`  - Tool calls: ${this.currentStatus.toolCalls.length}`);
+    console.log(`  - Session state: ${this.currentStatus.sessionState}`);
+    console.log(`  - Current final result: ${JSON.stringify(this.currentStatus.finalResult, null, 2)}`);
+    
+    // Check why the task stopped
+    if (!finalSuccess && !executionError) {
+      console.log(`[TaskEngine] WARNING: Task marked as failed but no error message set`);
+    }
+    
+    if (this.currentStatus.sessionState !== 'completed' && this.currentStatus.sessionState !== 'error') {
+      console.log(`[TaskEngine] WARNING: Task stopped with session state: ${this.currentStatus.sessionState}`);
     }
 
     // Build final result
@@ -646,6 +674,7 @@ export class TaskEngine {
       }
     };
 
+    console.log(`[TaskEngine] Returning final result: ${JSON.stringify(finalResult, null, 2)}`);
     return finalResult;
   }
 
@@ -714,6 +743,11 @@ export class TaskEngine {
       /timeout/i,                                  // Request timeouts
       /network.*error/i,                           // Network connectivity issues
       /connection.*reset/i,                        // Connection issues
+      /socket.*hang.*up/i,                         // Socket connection dropped
+      /econnreset/i,                               // Connection reset by peer
+      /enotfound/i,                                // DNS resolution failures
+      /econnrefused/i,                             // Connection refused (may be temporary)
+      /etimedout/i,                                // Network timeouts
       /temporary.*failure/i                        // Any temporary failure
     ];
     
@@ -730,8 +764,8 @@ export class TaskEngine {
       return `✕ [API Error: Rate/quota limit exceeded]\n\nTry using fewer API calls or wait before retrying.`;
     } 
     
-    if (/timeout|network.*error|connection/i.test(errorMessage)) {
-      return `✕ [API Error: Network/timeout issue]\n\nYou can retry the same operation or try an alternative approach.`;
+    if (/timeout|network.*error|connection|socket.*hang.*up|econnreset|enotfound|econnrefused|etimedout/i.test(errorMessage)) {
+      return `✕ [Network Error: Connection issue detected]\n\nThis appears to be a temporary network problem. Retrying the same operation...`;
     }
     
     // Extract the core error message for display

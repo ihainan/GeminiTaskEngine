@@ -30,5 +30,14 @@ coverage/
 *.lcov
 
 # Logs
-logs
+logs/
 *.log
+
+# Test generated files and directories
+examples/app-out/
+examples/*.zip
+examples/appsynth.log
+app-out/
+*.zip
+__pycache__/
+*.pyc
