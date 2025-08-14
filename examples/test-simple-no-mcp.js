@@ -23,14 +23,14 @@ function formatOutput(event) {
   }
   
   // Show current action
-  if (updates.currentAction) {
-    const actionIcon = {
-      'thinking': '🧠',
-      'tool_executing': '🔧', 
-      'responding': '💬'
-    }[updates.currentAction.type] || '⚡';
-    console.log(`${actionIcon} ${updates.currentAction.description}`);
-  }
+  // if (updates.currentAction) {
+  //   const actionIcon = {
+  //     'thinking': '🧠',
+  //     'tool_executing': '🔧', 
+  //     'responding': '💬'
+  //   }[updates.currentAction.type] || '⚡';
+  //   console.log(`${actionIcon} ${updates.currentAction.description}`);
+  // }
 
   // Show LLM responses 
   if (updates.llmResponse) {
@@ -89,6 +89,19 @@ function formatOutput(event) {
     }
   }
 
+  // Show todo updates
+  if (updates.todo) {
+    console.log(`📋 Todo List Updated:`);
+    updates.todo.todos.forEach((todo, index) => {
+      const statusIcon = {
+        'pending': '[ ]',
+        'in_progress': '[.]',
+        'completed': '[X]'
+      }[todo.status] || '[?]';
+      console.log(`   ${index + 1}. ${statusIcon} ${todo.content}`);
+    });
+  }
+
   // Show completion
   if (updates.completion) {
     if (updates.completion.success) {
@@ -133,9 +146,10 @@ Use the available tools to complete the task. If you need to create a file, use 
   
   const request = {
     sessionId: `simple-test-${Date.now()}`,
-    description: 'Create a text file called "hello.txt" with the content "Hello from Claude TaskEngine!", if file already exists, update the content.',
+    description: 'Create a Python calculator script with add and multiply functions. Use the TodoWrite tool to track your progress with a task list.',
     workingDirectory: process.cwd(),
-    requiredTools: ['Write', 'Read']
+    // Don't specify requiredTools to allow all tools including TodoWrite
+    // requiredTools: ['Write', 'Read']
   };
   
   console.log(`📝 Task: ${request.description}`);

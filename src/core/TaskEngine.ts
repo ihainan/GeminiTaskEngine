@@ -90,12 +90,17 @@ export class TaskEngine {
       
       // Use Claude Code SDK query function
       const queryOptions: any = {
-        allowedTools: config.tools,
         model: config.model,
         maxTurns: config.maxTurns,
         cwd: config.workingDirectory,
         permissionMode: 'default' as const
       };
+
+      // Only add allowedTools if client explicitly specifies tools
+      if (config.tools && config.tools.length > 0) {
+        queryOptions.allowedTools = config.tools;
+      }
+      // If config.tools is undefined/empty, Claude Code SDK will allow all tools
 
       // Add API key only if explicitly provided
       if (config.apiKey && config.apiKey.trim()) {
@@ -223,7 +228,12 @@ export class TaskEngine {
             // console.log(`🔧 Found ${toolUseBlocks.length} tool call(s)`);
             
             for (const toolCall of toolUseBlocks) {
-              this.handleToolCall(toolCall);
+              // Check if this is a TodoWrite tool call
+              if (toolCall.name === 'TodoWrite') {
+                this.handleTodoWrite(toolCall);
+              } else {
+                this.handleToolCall(toolCall);
+              }
             }
           }
         }
@@ -467,6 +477,22 @@ export class TaskEngine {
     }
   }
 
+
+  private handleTodoWrite(toolCall: any): void {
+    // Also handle it as a regular tool call for tracking
+    this.handleToolCall(toolCall);
+        
+    // Extract todo list from TodoWrite tool call
+    const toolArgs = toolCall?.input || {};
+    const todos = toolArgs.todos || [];
+    
+    // Send todo update event
+    this.emitEvent({
+      todo: {
+        todos: todos
+      }
+    });
+  }
 
   private calculateProgress(): number {
     // Simple turn-based progress calculation

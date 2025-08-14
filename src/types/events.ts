@@ -65,6 +65,16 @@ export interface ResultMessageUpdate {
   permissionDenials: number;
 }
 
+export interface TodoItem {
+  id: string;
+  content: string;
+  status: 'pending' | 'in_progress' | 'completed';
+}
+
+export interface TodoUpdate {
+  todos: TodoItem[];
+}
+
 /**
  * Composite event that can contain multiple types of updates
  */
@@ -82,6 +92,7 @@ export interface TaskStatusEvent {
     currentAction?: CurrentActionUpdate;
     systemMessage?: SystemMessageUpdate;
     resultMessage?: ResultMessageUpdate;
+    todo?: TodoUpdate;
   };
 }
 
