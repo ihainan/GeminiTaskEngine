@@ -1,7 +1,7 @@
 {
-  "name": "@aizgc/task-engine",
+  "name": "@aizgc/task-engine-cc",
   "version": "1.0.0",
-  "description": "Generic task execution engine with strategy pattern support",
+  "description": "Generic task execution engine with Claude Code SDK support",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "files": [
@@ -16,10 +16,15 @@
     "prebuild": "npm run clean",
     "test": "jest",
     "test:watch": "jest --watch",
+    "test:claude": "node examples/test-claude-engine.js",
+    "test:simple-claude": "node --loader ts-node/esm examples/test-simple-claude.js",
+    "test:no-mcp": "node --loader ts-node/esm examples/test-simple-no-mcp.js",
+    "test:js": "node examples/test-simple-compiled.js",
     "lint": "eslint src/**/*.ts",
     "lint:fix": "eslint src/**/*.ts --fix",
     "prepublishOnly": "npm run build"
   },
+  "type": "module",
   "keywords": [
     "task-engine",
     "strategy-pattern",
@@ -29,9 +34,6 @@
   ],
   "author": "AIZGC Team",
   "license": "MIT",
-  "dependencies": {
-    "uuid": "^9.0.1"
-  },
   "devDependencies": {
     "@types/jest": "^29.5.8",
     "@types/node": "^20.9.0",
@@ -41,11 +43,12 @@
     "eslint": "^8.54.0",
     "jest": "^29.7.0",
     "ts-jest": "^29.1.1",
-    "typescript": "^5.2.2"
+    "ts-node": "^10.9.2",
+    "typescript": "^5.9.2"
   },
-  "peerDependencies": {
-    "@google/gemini-cli-core": "^0.1.15",
-    "@google/genai": "*"
+  "dependencies": {
+    "@anthropic-ai/claude-code": "^1.0.80",
+    "uuid": "^9.0.1"
   },
   "engines": {
     "node": ">=18.0.0"
