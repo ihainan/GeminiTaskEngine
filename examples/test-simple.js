@@ -1,392 +1,250 @@
 /**
- * TaskEngine test program with plain text output (like CLI non-interactive mode)
+ * TaskEngine test with MCP server and TodoWrite functionality
  */
 
-import { TaskEngine } from '../dist/index.js';
+import { TaskEngine } from '../dist/core/TaskEngine.js';
 import fs from 'fs';
 import path from 'path';
 
-// State tracking for plain text output (like CLI non-interactive mode)
-class OutputState {
-  constructor() {
-    this.lastTurn = 0;
-    this.lastToolCallCount = 0;
-    this.toolStates = new Map(); // callId -> last known state
-    this.outputedStreams = new Set(); // Track outputted stream texts to avoid duplicates
-  }
-
-  reset() {
-    this.lastTurn = 0;
-    this.lastToolCallCount = 0;
-    this.toolStates.clear();
-    this.outputedStreams.clear();
-  }
-}
-
-const outputState = new OutputState();
-
-// Plain text output formatter (like CLI non-interactive mode)
-function formatPlainStatus(status) {
-  // 1. Check for turn changes
-  if (status.progress.currentTurn !== outputState.lastTurn) {
-    if (outputState.lastTurn > 0) {
-      console.log(`\nTurn ${outputState.lastTurn} completed`);
+// Event-driven output formatter for MCP server testing
+function formatOutput(event) {
+  const updates = event.updates;
+  
+  // Show system message info
+  if (updates.systemMessage) {
+    const sys = updates.systemMessage;
+    console.log(`System: ${sys.model} | CWD: ${sys.cwd.split('/').pop()} | Tools: ${sys.tools.length} | Mode: ${sys.permissionMode}`);
+    if (sys.mcpServers?.length > 0) {
+      console.log(`   MCP Servers: ${sys.mcpServers.join(', ')}`);
     }
-    console.log(`\nTurn ${status.progress.currentTurn} started (${status.progress.percentage}%)`);
-    outputState.lastTurn = status.progress.currentTurn;
+  }
+  
+  // Show turn progress with current action
+  if (updates.progress) {
+    console.log(`\nTurn ${updates.progress.currentTurn} (${updates.progress.percentage.toFixed(1)}%)`);
+  }
+  
+  // Show current action
+  if (updates.currentAction) {
+    console.log(`${updates.currentAction.description}`);
   }
 
-  // 2. Thought processing removed - following CLI non-interactive mode pattern
-  // (Thoughts are filtered out at TaskEngine level)
+  // Show LLM responses 
+  if (updates.llmResponse) {
+    console.log(`Claude Response: ${updates.llmResponse.text}`);
+  }
 
-  // DEBUG: 详细流式响应调试 (暂时屏蔽)
-  // if (status.llmStream) {
-  //   console.log(`[DEBUG] LLM Stream - Turn ${status.progress.currentTurn}:`);
-  //   console.log(`  - Text Length: ${status.llmStream.partialText?.length || 0}`);
-  //   console.log(`  - Is Complete: ${status.llmStream.isComplete}`);
-  //   console.log(`  - First 200 chars: ${JSON.stringify(status.llmStream.partialText?.slice(0, 200))}`);
-  // }
-
-  // 3. Handle text streaming - show first complete text only
-  if (status.llmStream?.isComplete && status.llmStream?.partialText) {
-    const textContent = status.llmStream.partialText.trim();
+  // Show tool calls with parameters
+  if (updates.toolStart) {
+    const tool = updates.toolStart;
+    console.log(`Tool: ${tool.name} - executing`);
     
-    // Only show the first complete text for each turn (ignore tool status updates)
-    const turnKey = `turn-${status.progress.currentTurn}`;
-    if (!outputState.outputedStreams.has(turnKey)) {
-      console.log('\n[COMPLETE RESPONSE]:', textContent);
-      outputState.outputedStreams.add(turnKey);
+    // Show tool parameters in a readable format
+    if (tool.args && Object.keys(tool.args).length > 0) {
+      const params = Object.entries(tool.args)
+        .map(([key, value]) => {
+          // Format different parameter types
+          if (typeof value === 'string') {
+            // Handle file paths more intelligently
+            if (key === 'file_path' || key === 'path' || value.includes('/')) {
+              // Show just filename for paths, with hint it's a path
+              const filename = value.split('/').pop();
+              return `${key}: "${filename}"`;
+            } else if (value.length > 60) {
+              // Truncate very long strings
+              return `${key}: "${value.substring(0, 60)}..."`;
+            } else {
+              return `${key}: "${value}"`;
+            }
+          } else if (typeof value === 'object' && value !== null) {
+            return `${key}: {${Object.keys(value).length} props}`;
+          } else {
+            return `${key}: ${value}`;
+          }
+        })
+        .join(', ');
       
-      // Add line break before tool calls
-      if (status.currentAction?.type === 'tool_executing') {
-        console.log();
-      }
+      console.log(`   Parameters: ${params}`);
     }
   }
 
-  // 5. Handle tool calls (reuse existing logic)
-  if (status.toolCalls.length > 0) {
-    status.toolCalls.forEach(call => {
-      const lastState = outputState.toolStates.get(call.callId);
-      
-      if (!lastState) {
-        // New tool call
-        console.log(`\n🔧 Tool call: ${call.name}`);
-        if (call.args && Object.keys(call.args).length > 0) {
-          console.log(`   Args: ${JSON.stringify(call.args, null, 2)}`);
-        }
-        outputState.toolStates.set(call.callId, { status: call.status });
-      } else if (lastState.status !== call.status) {
-        // Tool status changed
-        const duration = call.duration ? ` (${call.duration}ms)` : '';
-        
-        if (call.status === 'executing') {
-          console.log(`   ${call.name} executing...`);
-        } else if (call.status === 'completed') {
-          console.log(`   ${call.name} completed${duration}`);
-          
-          // Show result for completed tools
-          if (call.result) {
-            if (call.name === 'patch_binary' || call.result.length < 1000) {
-              console.log(`   Result [START]:\n${call.result}\n   [END]`);
-            } else {
-              console.log(`   Result [START]:\n${call.result.slice(0, 150)}...\n   [END]`);
-              console.log(`   [Full length: ${call.result.length} characters]`);
-            }
-          }
-          
-          if (call.exportPath) {
-            console.log(`   Export path: ${call.exportPath}`);
-          }
-        } else if (call.status === 'error') {
-          console.log(`   ${call.name} failed${duration}`);
-          if (call.error) {
-            console.log(`   Error: ${call.error}`);
-          }
-        }
-        
-        outputState.toolStates.set(call.callId, { status: call.status });
-      }
+  // Show tool results
+  if (updates.toolResult) {
+    const status = updates.toolResult.status === 'error' ? 'ERROR' : 'OK';
+    console.log(`   ${status} Result (${updates.toolResult.duration}ms): ${updates.toolResult.result.substring(0, 500)}${updates.toolResult.result.length > 500 ? '...' : ''}`);
+  }
+
+  // Show result message (final statistics)
+  if (updates.resultMessage) {
+    const result = updates.resultMessage;
+    console.log(`\nExecution Complete:`);
+    console.log(`   Duration: ${result.duration}ms (API: ${result.apiDuration}ms)`);
+    console.log(`   Turns: ${result.turns} | Cost: $${result.totalCost.toFixed(4)}`);
+    console.log(`   Tokens: ${result.usage.inputTokens} in + ${result.usage.outputTokens} out`);
+    if (result.permissionDenials > 0) {
+      console.log(`   Permission denials: ${result.permissionDenials}`);
+    }
+  }
+
+  // Show todo updates
+  if (updates.todo) {
+    console.log(`\nTodo List Updated:`);
+    updates.todo.todos.forEach((todo, index) => {
+      const statusIcon = {
+        'pending': '[ ]',
+        'in_progress': '[.]',
+        'completed': '[X]'
+      }[todo.status] || '[?]';
+      console.log(`   ${index + 1}. ${statusIcon} ${todo.content}`);
     });
   }
 
-  // 6. Handle final result
-  if (status.finalResult && status.sessionState === 'completed') {
-    console.log(`\n✅ Task completed!`);
-    console.log(`   Success: ${status.finalResult.success}`);
-    console.log(`   Summary: ${status.finalResult.summary}`);
-    if (status.finalResult.outputPath) {
-      console.log(`   Output path: ${status.finalResult.outputPath}`);
+  // Show completion
+  if (updates.completion) {
+    if (updates.completion.success) {
+      console.log(`\nTask completed! ${updates.completion.summary}`);
+    } else {
+      console.log(`\nTask failed: ${updates.completion.error || updates.completion.summary}`);
     }
-  }
-
-  // 7. Handle errors
-  if (status.sessionState === 'error' && status.finalResult) {
-    console.log(`\n❌ Task failed!`);
-    if (status.finalResult.error) {
-      console.log(`   Error: ${status.finalResult.error}`);
-    }
-    console.log(`   Summary: ${status.finalResult.summary}`);
   }
 }
 
 async function main() {
-  console.log('Starting TaskEngine test with plain text output (like CLI non-interactive mode)');
+  console.log('Testing TaskEngine with MCP Server and TodoWrite');
   
-  // Read system prompt
-  let systemPrompt = '';
-  const promptPath = path.join(process.cwd(), '..', 'software_scalpel', 'docs', 'Prompt.md');
-  try {
-    systemPrompt = fs.readFileSync(promptPath, 'utf-8');
-    console.log('✅ Successfully loaded system prompt');
-  } catch (error) {
-    console.warn('⚠️ Cannot load Prompt.md, using default prompt');
-  }
-  
-  // Reset output state
-  outputState.reset();
-  
-  // Create a simple task strategy for testing
-  class TestTaskStrategy {
-    getName() {
-      return 'TestTaskStrategy';
-    }
-
-    calculateProgress(toolCalls, turnCount) {
-      // Simple progress calculation based on turn count
-      return Math.min(turnCount * 12, 95);
-    }
-
-    isTaskComplete(toolCalls) {
-      // Check if export_program was executed successfully
-      return toolCalls.some(call => 
-        call.name === 'export_program' && 
-        call.status === 'completed'
-      );
-    }
-
-    getFatalErrorPatterns() {
-      return [/(ECONN|ETIMEDOUT|auth|permission|timeout|ECONNREFUSED)/i];
-    }
-
-    getWorkflowSteps() {
-      return [
-        { name: 'import_binary', weight: 20, isRequired: true },
-        { name: 'open_program', weight: 30, isRequired: true },
-        { name: 'analyze_binary', weight: 40, isRequired: true },
-        { name: 'patch_with_data', weight: 80, isRequired: true },
-        { name: 'export_program', weight: 100, isRequired: true }
-      ];
-    }
-
-    processToolResult(toolCall, result) {
-      return { shouldContinue: true };
-    }
-
-    isValidToolCall(toolName, args) {
-      const validTools = ['import_binary', 'open_program', 'analyze_binary', 'list_literals', 'patch_with_data', 'save_program', 'export_program'];
-      return validTools.includes(toolName);
-    }
-  }
-
-  // Create a custom prompt strategy that uses the original PromptBuilder logic
-  class LegacyGhidraPromptStrategy {
-    constructor(systemPrompt) {
-      this.systemPrompt = systemPrompt || `# === Reverse-Engineering Expert – System Prompt ===
+  // Binary analysis prompt strategy with TodoWrite integration
+  class BinaryAnalysisPromptStrategy {
+    getName() { return 'BinaryAnalysisPromptStrategy'; }
+    
+    async buildPrompt(request) {
+      const systemPrompt = `# === Reverse-Engineering Expert – System Prompt ===
 You are "RE-Expert", a senior reverse-engineering engineer who drives a **remote** Ghidra-based MCP service via SSE.
 Your task is to fulfill binary-modification requests by patching the target binary (stored on the MCP server) and saving
-the result to:
+the result to: /data/saved/<original_name>_<YYYYMMDD_HHmmss>.<orig_ext>
 
-    /data/saved/<original_name>_<YYYYMMDD_HHmmss>.<orig_ext>
+**IMPORTANT**: Use the TodoWrite tool to track your progress throughout the entire workflow. Create a detailed task list at the beginning and update it as you complete each step.
 
 ────────────────────
 Environment rules
 ────────────────────
 1. **Remote-only tooling** All MCP tool calls must be executed on the remote server.
-   • Absolutely **no** shell commands, file operations, or other tools may be executed on the local machine.
-   • Never inspect, create, rename, edit, or list local files or directories.
 2. The target binary is always located at **/data/<filename> on the MCP server**.
-   • Do not call \`search_binaries\`; import directly from the /data path.
-3. Use **only** the documented MCP tools; follow their signatures exactly.  
-   (Key tools: import_binary, open_program, analyze_binary, list_functions, list_all_entry_points,
-   decompile_function, patch_binary, save_program, **export_binary**, …)
-4. Internet research is allowed unless the user forbids it.
-5. No backup is required (MCP has no backup feature).
-6. Follow all legal and ethical standards—reject requests that facilitate malware, DRM/EULA violations, etc.
-7. **Cross-platform symbol rules**
-   • Mach-O (macOS): symbols are usually prefixed with an underscore, e.g. \`_main\`.  
-   • PE (Windows): names may be decorated (e.g. \`_main@16\`, \`?func@@YAXXZ\`).  
-   • When in doubt or for stripped binaries, always use a hex address such as \`0x100003F60\`.
+3. Use **only** the documented MCP tools; follow their signatures exactly.
+4. **Always use TodoWrite** to create and manage your task list
+5. Max turns available: 200
 
 ────────────────────
-MANDATORY: Create a plan first
+MANDATORY: Create a plan with TodoWrite first
 ────────────────────
-**IMPORTANT**: Before using any tools, create a brief plan outlining:
+**IMPORTANT**: Before using any MCP tools, use TodoWrite to create a detailed task list outlining:
 1. What you need to accomplish
-2. Which tools you'll use in order
-3. Expected outcome
+2. Which MCP tools you'll use in order
+3. Expected outcome for each step
 
-Then proceed with the standard workflow:
+Then proceed with the standard workflow while updating your todo list:
 
 ────────────────────
-Standard workflow
+Reference workflow (adapt as needed)
 ────────────────────
-1. **Gather context** Confirm software name, binary filename (relative to /data), architecture (if known),
-   and the precise behavioral change desired.
-2. **Feasibility check** Outline method, target code areas, and risks; proceed only after user approval.
-3. **Import & analyze**
+1. **Create Todo List** - Use TodoWrite to plan all steps
+2. **Import & analyze**
    ➤ import_binary("/data/<filename>")
    ➤ open_program("<filename>")
    ➤ analyze_binary
-4. **Plan modification**
-   ➤ list_functions / list_all_entry_points — obtain exact symbol names or entry-point addresses  
-   ➤ Locate code or data to patch (decompile_function, list_literals, call graphs…).
-   Produce a concise patch strategy.
-5. **Apply patch** 
-   ➤ patch_binary(autopad=true, …) — Use proper Ghidra assembly syntax:
-     • For instructions: 'mov rax, 1\\nret'
-     • For raw bytes/strings: '.byte 0x90,0x90' or '.byte "Hello",0x00'
-     • AVOID 'db' (use '.byte' instead)
-   ➤ Plus any necessary type or symbol edits.
-6. **Save & export**
+3. **Plan modification**
+   ➤ list_functions / list_all_entry_points
+   ➤ Locate code or data to patch (decompile_function, list_literals)
+4. **Apply patch** 
+   ➤ patch_binary with proper Ghidra assembly syntax
+5. **Save & export**
    ➤ save_program  
-   ➤ export_binary("/data/saved/<original_name>_<YYYYMMDD_HHmmss>.<orig_ext>")  
-   Inform the user what changed and where the new binary is saved.
-7. **Iterate** If verification fails, adjust and repeat from step 4.
+   ➤ export_binary("/data/saved/<original_name>_<YYYYMMDD_HHmmss>.<orig_ext>")
+6. **Update Todo List** - Mark tasks as completed using TodoWrite
 
-────────────────────
-Critical error handling
-────────────────────
-**IMPORTANT**: After EVERY tool call, you MUST:
-1. **Check the tool response carefully** for any error indicators:
-   • Look for text containing "Error:", "FAILED:", "[Error", "Exception", "ERROR"
-   • Check for assembly syntax errors, permission denials, file not found messages
-   • Watch for phrases like "operation failed", "could not", "unable to"
-2. **If ANY error is detected**:
-   • STOP immediately and analyze the specific error message
-   • Do NOT proceed to the next step in the workflow
-   • Identify the root cause (syntax, parameters, file paths, permissions, etc.)
-   • Adjust your approach based on the error type:
-     - Assembly syntax errors → Fix assembly code format
-     - File path errors → Verify and correct paths
-     - Permission errors → Check file access or try alternative approaches
-     - API/connection errors → Retry or use alternative methods
-3. **Retry with corrections** before moving forward
-4. **Only proceed to next steps** after confirming the current tool executed successfully
-
-Remember: A tool may appear "completed" but still contain error messages in its output. Always read the actual response content, not just the completion status.
-
-────────────────────
-Interaction style
-────────────────────
-• Be concise and use bullet points for plans.
-• Ask clarifying questions only when essential.
-• Never issue local commands or refer to the local file system.
-
-# === End of Prompt ===`;
-    }
-
-    getName() {
-      return 'LegacyGhidraPromptStrategy';
-    }
-
-    async buildPrompt(request, config) {
-      // Extract binary info from description using simple pattern matching
-      // This is to maintain backward compatibility
-      const binaryInfo = this.extractBinaryInfoFromDescription(request.description);
-      const userRequest = this.extractUserRequestFromDescription(request.description);
-
-      const userContext = `
-# Binary Information
-- **Binary Name**: ${binaryInfo.name}
-- **Binary Path**: ${binaryInfo.path}${binaryInfo.architecture ? `
-- **Architecture**: ${binaryInfo.architecture}` : ''}${binaryInfo.metadata ? `
-- **Additional Metadata**: ${JSON.stringify(binaryInfo.metadata, null, 2)}` : ''}
+Remember to update your todo list after each major step!
 
 # User Requirements
-${userRequest}
+${request.description}
 
-**Important**: The binary file is already available at ${binaryInfo.path} on the MCP server. You should directly import it using import_binary("${binaryInfo.path}") and then open it with open_program("${binaryInfo.name}").
-`;
+# Binary Information
+test_binary: ELF 64-bit LSB pie executable, x86-64, version 1 (SYSV), dynamically linked, interpreter /lib64/ld-linux-x86-64.so.2, BuildID[sha1]=0c76a177b465f87bb7a71b83ee1cda1d0643b3cc, for GNU/Linux 3.2.0, not stripped
+
+**Important**: The binary file is already available as "test_binary" on the MCP server. Start by creating your todo list, then proceed with the analysis.`;
       
-      return this.systemPrompt + '\\n\\n' + userContext;
+      return systemPrompt;
     }
-
-    async getSystemPrompt() {
-      return this.systemPrompt;
-    }
-
-    combinePrompts(systemPrompt, userPrompt) {
-      return userPrompt; // System prompt already included
-    }
-
-    extractBinaryInfoFromDescription(description) {
-      // Simple extraction - for test purposes, use fixed values
-      return {
-        name: 'test_binary',
-        path: '/data/test_binary',
-        architecture: 'x64'
-      };
-    }
-
-    extractUserRequestFromDescription(description) {
-      // Extract the actual user request from description
-      // Since description is now just the user request, return it directly
-      return description;
-    }
+    
+    async getSystemPrompt() { return undefined; }
+    combinePrompts(system, user) { return user; }
+  }
+  
+  // Strategy without completion check - let Claude Code SDK decide naturally
+  class NaturalCompletionStrategy {
+    getName() { return 'NaturalCompletionStrategy'; }
+    calculateProgress(toolCalls, turnCount) { return Math.min(turnCount * 5, 100); }
+    // No isTaskComplete method - let Claude Code SDK naturally complete
+    getFatalErrorPatterns() { return [/ERROR|FAILED/i]; }
+    getWorkflowSteps() { return [{ name: 'MCP Tools', weight: 100, isRequired: true }]; }
+    processToolResult() { return { shouldContinue: true }; }
+    isValidToolCall() { return true; }
   }
 
-  // Create TaskEngine instance with custom strategies
   const engine = new TaskEngine({
-    strategy: new TestTaskStrategy(),
-    promptStrategy: new LegacyGhidraPromptStrategy(systemPrompt),
-    onStatusUpdate: formatPlainStatus,
+    strategy: new NaturalCompletionStrategy(),
+    promptStrategy: new BinaryAnalysisPromptStrategy(),
+    onEvent: formatOutput,
   });
   
-  // Create task request with new interface but original content
   const request = {
-    sessionId: `structured-test-${Date.now()}`,
-    description: 'Please modify the "Hello World" text in the program to "Hello Ghidra".',
-    mcpServerUrl: 'http://127.0.0.1:28080/sse',
-    mcpServerName: 'ghidra-agent',
-    taskType: 'binary-analysis',
-    workingDirectory: process.cwd() // Use current directory instead of /tmp/task-engine
+    sessionId: `mcp-binary-test-${Date.now()}`,
+    description: 'Modify the string "Hello World" to "Hello Ghidra" in the test_binary file. Use TodoWrite to track your progress through each step of the binary modification process.',
+    workingDirectory: process.cwd(),
+    mcpServerUrl: 'http://localhost:28080/sse',
+    mcpServerName: 'ghidra-mcp',
+    mcpDescription: 'Ghidra SSE MCP Server for Binary Analysis',
+    mcpTimeout: 60000,
   };
   
-  console.log('\n📋 Task Information:');
-  console.log(`   User request: ${request.description}`);
-  console.log(`   Task type: ${request.taskType}`);
-  console.log(`   MCP server: ${request.mcpServerUrl}`);
-  console.log(`   Session ID: ${request.sessionId}`);
-  console.log('\n' + '='.repeat(80));
+  console.log('\nTask: ' + request.description);
+  console.log('Working directory: ' + request.workingDirectory);
+  if (request.mcpServerUrl) {
+    console.log('MCP Server: ' + request.mcpServerUrl);
+  } else {
+    console.log('MCP Server: None (testing TodoWrite only)');
+  }
+  console.log('Session ID: ' + request.sessionId);
+  console.log('=' + '='.repeat(80));
 
   try {
     // Execute task
     const result = await engine.executeTask(request);
     
-    console.log('\n\n' + '='.repeat(80));
-    console.log('📊 Execution Statistics:');
-    console.log(`   Total duration: ${result.metadata.totalDuration}ms`);
-    console.log(`   Total turns: ${result.metadata.turnCount}`);
-    console.log(`   Tool call count: ${result.metadata.toolCallCount}`);
+    console.log('\n' + '='.repeat(80));
+    console.log('Results:');
+    console.log(`   Success: ${result.success}`);
+    console.log(`   Duration: ${result.metadata.totalDuration}ms`);
+    console.log(`   Turns: ${result.metadata.turnCount}`);
+    console.log(`   Tool calls: ${result.metadata.toolCallCount}`);
     
-    // Output matches CLI non-interactive mode
-    console.log('\n🔍 Plain Text Output Benefits:');
-    console.log('   ✅ Clean output like CLI non-interactive mode');
-    console.log('   ✅ No thought process clutter');
-    console.log('   ✅ Direct text streaming');
-    console.log('   ✅ Matches real CLI behavior');
+    if (result.success) {
+      console.log('\nTaskEngine with MCP server working correctly!');
+      console.log('- Event-driven architecture functional');
+      console.log('- TodoWrite integration operational');
+      console.log('- MCP server connection established');
+    } else {
+      console.log(`\nTask failed: ${result.error}`);
+    }
     
   } catch (error) {
-    console.error('\n💥 Task execution error:', error);
+    console.error('\nTask execution error:', error);
   }
 }
 
 // Run test
 main().then(() => {
-  console.log('\n🏁 Program completed successfully');
+  console.log('\nProgram completed successfully');
   process.exit(0);
 }).catch(error => {
-  console.error('\n💥 Program crashed:', error);
+  console.error('\nProgram crashed:', error);
   process.exit(1);
 });

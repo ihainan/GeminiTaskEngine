@@ -93,7 +93,7 @@ export class TaskEngine {
         model: config.model,
         maxTurns: config.maxTurns,
         cwd: config.workingDirectory,
-        permissionMode: 'default' as const
+        permissionMode: 'bypassPermissions' as const // Allow all tools without user prompts
       };
 
       // Only add allowedTools if client explicitly specifies tools
@@ -335,6 +335,7 @@ export class TaskEngine {
     const serverName = request.mcpServerName || 'default-mcp-server';
     return {
       [serverName]: {
+        type: 'sse', // SSE transport type for Server-Sent Events
         url: request.mcpServerUrl,
         description: request.mcpDescription || 'Task MCP Server',
         timeout: request.mcpTimeout || 60000
