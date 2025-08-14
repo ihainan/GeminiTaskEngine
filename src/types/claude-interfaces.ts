@@ -1,14 +1,29 @@
 /**
  * @license
- * Copyright 2025 Google LLC
- * SPDX-License-Identifier: Apache-2.0
+ * Copyright 2025 AIZGC Team
+ * SPDX-License-Identifier: MIT
  */
 
-// Removed Gemini-specific imports - using generic types instead
 import type { TaskRequest, TaskResult, TaskStatus } from './types.js';
 
 /**
- * Core strategy interface for handling different task types
+ * Claude-specific response format (simplified)
+ */
+export interface ClaudeResponse {
+  content?: string;
+  type?: string;
+  toolCalls?: ClaudeToolCall[];
+}
+
+export interface ClaudeToolCall {
+  id?: string;
+  name: string;
+  args?: Record<string, unknown>;
+  result?: any;
+}
+
+/**
+ * Core strategy interface for handling different task types (Claude version)
  */
 export interface TaskStrategy {
   /**
@@ -17,9 +32,9 @@ export interface TaskStrategy {
   calculateProgress(toolCalls: ToolCall[], turnCount: number): number;
   
   /**
-   * Determine if the task has been completed successfully
+   * Determine if the task has been completed successfully (optional)
    */
-  isTaskComplete(toolCalls: ToolCall[], response?: any): boolean;
+  isTaskComplete?(toolCalls: ToolCall[], response?: ClaudeResponse): boolean;
   
   /**
    * Get patterns for fatal errors that should terminate execution
@@ -48,7 +63,7 @@ export interface TaskStrategy {
 }
 
 /**
- * Configuration builder interface for creating Config instances
+ * Configuration builder interface for creating configurations
  */
 export interface ConfigurationBuilder {
   /**
@@ -124,7 +139,7 @@ export interface TaskProcessingResult {
 
 export interface ConfigParams {
   sessionId: string;
-  mcpServerConfig?: any; // Optional: MCP server configuration
+  mcpServerConfig?: any; // Flexible MCP server configuration
   model: string;
   maxTurns: number;
   workingDirectory: string;

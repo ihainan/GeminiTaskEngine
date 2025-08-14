@@ -1,6 +1,5 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
-contextBridge.exposeInMainWorld('api', {
-  getSimulatedTextContent: () => ipcRenderer.invoke('get-simulated-text-content'),
-  getSimulatedConsoleOutput: () => ipcRenderer.invoke('get-simulated-console-output'),
+contextBridge.exposeInMainWorld('electronAPI', {
+  onFileOpened: (callback) => ipcRenderer.on('file-opened', (_event, value) => callback(value))
 });

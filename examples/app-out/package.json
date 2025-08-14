@@ -1,12 +1,13 @@
 {
-  "name": "fastercap-mimic",
+  "name": "faster-cap",
   "version": "1.0.0",
-  "description": "An Electron application mimicking FasterCap functionality.",
+  "description": "A reimplementation of the FasterCap application.",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
     "build:win": "electron-builder --dir --win --x64",
-    "postinstall": "electron-builder install-app-deps"
+    "build:mac": "electron-builder --dir --mac --x64",
+    "build:linux": "electron-builder --dir --linux --x64"
   },
   "keywords": [],
   "author": "AppSynth",

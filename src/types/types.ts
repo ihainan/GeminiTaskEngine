@@ -26,6 +26,8 @@ export interface TaskRequest {
   model?: string;                           // LLM model to use
   maxTurns?: number;                        // Maximum conversation turns
   workingDirectory?: string;                // Working directory
+  requiredTools?: string[];                 // Required tools for task
+  customOptions?: Record<string, unknown>;  // Custom configuration options
 }
 
 export interface TaskStatus {
@@ -98,9 +100,9 @@ export interface TaskEngineOptions {
   configBuilder?: any;       // ConfigurationBuilder
   promptStrategy?: any;      // PromptStrategy
   pluginManager?: any;       // PluginManager
-  onStatusUpdate: (status: TaskStatus) => void;
+  onEvent: (event: any) => void;  // Event-driven callback
   
-  // Legacy support
+  // Optional settings
   mcpServerName?: string;     // MCP server name
   systemPrompt?: string;      // Custom system prompt
 } 

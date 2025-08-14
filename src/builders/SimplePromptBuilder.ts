@@ -4,9 +4,8 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import type { Config } from '@google/gemini-cli-core';
 import type { TaskRequest } from '../types/types.js';
-import type { PromptStrategy } from '../types/interfaces.js';
+import type { PromptStrategy } from '../types/claude-interfaces.js';
 
 /**
  * Simple prompt builder that uses external prompts or falls back to task description
@@ -18,7 +17,7 @@ export class SimplePromptBuilder {
     this.strategy = strategy;
   }
 
-  async buildPrompt(request: TaskRequest, config?: Config): Promise<string> {
+  async buildPrompt(request: TaskRequest, config?: any): Promise<string> {
     // Use strategy if provided
     if (this.strategy) {
       return this.strategy.buildPrompt(request, config);
@@ -39,7 +38,7 @@ export class SimplePromptBuilder {
     this.strategy = strategy;
   }
 
-  private async getSystemPrompt(config?: Config): Promise<string | undefined> {
+  private async getSystemPrompt(config?: any): Promise<string | undefined> {
     if (!config) {
       return undefined;
     }

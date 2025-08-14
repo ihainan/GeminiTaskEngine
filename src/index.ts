@@ -6,7 +6,7 @@
 
 export { TaskEngine } from './core/TaskEngine.js';
 
-// Core interfaces and types
+// Core interfaces and types (original)
 export type {
   TaskStrategy,
   ConfigurationBuilder,
@@ -24,6 +24,12 @@ export type {
   RecoveryAction,
 } from './types/interfaces.js';
 
+// Claude-specific interfaces and types
+export type {
+  ClaudeResponse,
+  ClaudeToolCall
+} from './types/claude-interfaces.js';
+
 export type {
   TaskRequest,
   TaskStatus,
@@ -33,4 +39,4 @@ export type {
 } from './types/types.js';
 
 // Default implementations
-export { DefaultConfigurationBuilder, SimplePromptBuilder } from './builders/index.js';
+export { ClaudeConfigurationBuilder, SimplePromptBuilder } from './builders/index.js';

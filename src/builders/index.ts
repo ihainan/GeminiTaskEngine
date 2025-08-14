@@ -4,5 +4,5 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-export { DefaultConfigurationBuilder } from './DefaultConfigurationBuilder.js';
+export { ClaudeConfigurationBuilder } from './ClaudeConfigurationBuilder.js';
 export { SimplePromptBuilder } from './SimplePromptBuilder.js';

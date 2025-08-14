@@ -329,7 +329,21 @@ async function main() {
     }
 
     isTaskComplete(toolCalls) {
-      // Task is complete when Electron app is built and packaged
+      // Task is complete when SHA256 hash has been calculated successfully
+      const hasShasumSuccess = toolCalls.some(call => 
+        call.name === 'run_shell_command' && 
+        call.status === 'completed' &&
+        call.result && 
+        (call.result.includes('shasum -a 256') || call.args?.command?.includes('shasum -a 256')) &&
+        call.result.match(/[a-f0-9]{64}\s+\S+\.(tar\.gz|zip|exe|dmg|AppImage)/)
+      );
+      
+      if (hasShasumSuccess) {
+        console.log('[AppSynthTaskStrategy] SHA256 calculation detected - task complete!');
+        return true;
+      }
+      
+      // Fallback: Task is complete when Electron app is built and packaged
       const hasBuiltApp = toolCalls.some(call => 
         (call.name === 'build_electron_app' || call.name === 'package_electron_app') && 
         call.status === 'completed'
@@ -394,21 +408,9 @@ async function main() {
     }
 
     isValidToolCall(toolName, args) {
-      const validMcpTools = [
-        'import_binary', 'open_program', 'analyze_binary', 'list_literals', 
-        'list_functions', 'list_all_entry_points', 'decompile_function', 
-        'get_listing', 'get_detailed_listing', 'find_references', 
-        'map_c_to_assembly', 'generate_call_graph', 'build_function_call_graph',
-        'describe_type', 'save_program', 'export_program'
-      ];
-      
-      const validLocalTools = [
-        'generate_feature_spec', 'create_app_structure', 'generate_electron_app',
-        'install_dependencies', 'build_electron_app', 'package_electron_app',
-        'create_directory', 'write_file', 'run_command'
-      ];
-      
-      return validMcpTools.includes(toolName) || validLocalTools.includes(toolName);
+      // No whitelist restrictions - allow any tool name
+      // The actual tool availability will be determined by the underlying ToolRegistry
+      return true;
     }
   }
 
@@ -511,7 +513,17 @@ C) 本地项目生成（成功率优先）
 D) 本地构建与打包
    - 运行：\`npm ci\` → \`npm run start\`（可选快速自检）→ 直接构建 unpacked 版本
    - **强制架构**：构建时必须指定 **x64** 架构（如 \`electron-builder --dir --x64\`）。任何非 x86_64 产物均视为不合格。
-   - **最终打包格式**：将 unpacked 目录打包成 **zip 文件**，包含可执行程序和所有依赖文件，确保解压后可直接运行。zip 包命名格式：\`\<app-name\>-\<platform\>-x64.zip\`
+   - **最终打包格式**：将 unpacked 目录打包成 **zip 文件**，包含可执行程序和所有依赖文件，确保解压后可直接运行。
+   - **压缩工具使用规范**：
+     * 统一使用 **zip 格式**，禁止使用 tar.gz 或其他格式
+     * 压缩命令示例：\`cd dist && zip -r ../\<app-name\>-\<platform\>-x64.zip win-unpacked/\`
+     * 确保相对路径正确，避免绝对路径导致的文件结构问题
+     * 如果 zip 命令失败，使用 \`7z a -tzip\` 或 Python zipfile 模块作为备选
+     * **严禁**使用 \`tar + gzip\` 然后重命名为 .zip 的错误做法
+   - **文件命名规范**：
+     * Windows: \`\<app-name\>-win-x64.zip\`
+     * macOS: \`\<app-name\>-mac-x64.zip\` 
+     * Linux: \`\<app-name\>-linux-x64.zip\`
    - 完成后将 **zip 包**复制到当前目录，并输出其**绝对路径**、**目标架构（x86_64）**与 **SHA256**。
 
 E) 冒烟测试与验收
@@ -541,6 +553,10 @@ F) 交付信息
 • 每次 **MCP 调用**后，检索返回文本中是否包含 "Error"/"FAILED"/"Exception"/"unable to"/"could not"；发现即**停止→分析→修正→重试**。
 • 每次 **本地命令**后，检查退出码与 stderr；构建失败需回显关键信息，并给出下一步修复建议（依赖版本/脚本/配置/环境）。
 • 如检测到产物架构非 **x86_64**，直接判定失败并提示需添加 \`--x64\` 或对应配置。
+• **压缩工具错误检查**：
+  - 如果 \`zip\` 命令失败（"name not matched"/"Nothing to do"），**立即**切换工作目录到 dist 再执行
+  - 禁止使用 \`tar + gzip + mv\` 的错误组合；如需备选方案，使用 Python 或 7z
+  - 验证生成的 zip 文件：使用 \`file\` 命令确认为 "Zip archive data"，而非 "gzip compressed data"
 
 ────────────────────
 八、可观测性（便于封装器获取每步输出）
@@ -602,6 +618,7 @@ F) 交付信息
   // Create task request for AppSynth workflow
   const request = {
     sessionId: `appsynth-fastercap-${Date.now()}`,
+    model: 'gemini-2.5-pro', // Use Gemini 2.5 Pro for complex app synthesis
     description: '请基于 FasterCap 二进制文件生成一个可运行的 Electron 桌面应用，目标平台为 Windows x86 64。',
     mcpServerUrl: 'http://127.0.0.1:28080/sse',
     mcpServerName: 'ghidra-agent',

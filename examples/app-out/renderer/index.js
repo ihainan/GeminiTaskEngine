@@ -1,63 +1,17 @@
-document.addEventListener('DOMContentLoaded', () => {
-    const outputLog = document.getElementById('output-log');
+const outputDiv = document.getElementById('output');
 
-    // Simulate output log content
-    outputLog.value = "For Help, press F1";
-
-    // Basic 3D scene setup (requires Three.js)
-    const scene = new THREE.Scene();
-    const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-    const renderer = new THREE.WebGLRenderer({ canvas: document.getElementById('three-d-canvas') });
-    renderer.setSize(window.innerWidth * 0.7, window.innerHeight * 0.7); // Adjust size for center pane
-
-    // Create a simple woven structure (simulated)
-    const material = new THREE.MeshBasicMaterial({ color: 0xFFA500 }); // Orange color
-
-    const barWidth = 0.5;
-    const barHeight = 0.5;
-    const barDepth = 5;
-    const spacing = 1;
-
-    for (let i = 0; i < 15; i++) {
-        for (let j = 0; j < 15; j++) {
-            // Horizontal bars
-            const horizontalGeometry = new THREE.BoxGeometry(barDepth, barHeight, barWidth);
-            const horizontalBar = new THREE.Mesh(horizontalGeometry, material);
-            horizontalBar.position.set(
-                (j * (barDepth + spacing)) - (15 * (barDepth + spacing)) / 2,
-                0,
-                (i * (barWidth + spacing)) - (15 * (barWidth + spacing)) / 2
-            );
-            scene.add(horizontalBar);
-
-            // Vertical bars
-            const verticalGeometry = new THREE.BoxGeometry(barWidth, barHeight, barDepth);
-            const verticalBar = new THREE.Mesh(verticalGeometry, material);
-            verticalBar.position.set(
-                (i * (barWidth + spacing)) - (15 * (barWidth + spacing)) / 2,
-                0,
-                (j * (barDepth + spacing)) - (15 * (barDepth + spacing)) / 2
-            );
-            scene.add(verticalBar);
-        }
-    }
-
-    camera.position.z = 30;
-    camera.position.y = 10;
-    camera.rotation.x = -Math.PI / 6; // Tilt down slightly
-
-    function animate() {
-        requestAnimationFrame(animate);
-        renderer.render(scene, camera);
-    }
-    animate();
-
-    // Handle window resizing
-    window.addEventListener('resize', () => {
-        const newWidth = window.innerWidth * 0.7;
-        const newHeight = window.innerHeight * 0.7;
-        renderer.setSize(newWidth, newHeight);
-        camera.aspect = newWidth / newHeight;
-        camera.updateProjectionMatrix();
-    });
+window.electronAPI.onFileOpened((filePath) => {
+  outputDiv.innerHTML = `<h3>Output</h3><p>Opened file: ${filePath}</p>`;
+  // Simulate the output of the original application
+  outputDiv.innerHTML += "<pre>GMRES Iteration: 0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20\n" +
+                         "GMRES Iteration: 0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20\n" +
+                         "GMRES Iteration: 0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20\n" +
+                         "GMRES Iteration: 0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20\n" +
+                         "GMRES Iteration: 0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20\n" +
+                         "Capacitance matrix is:\n" +
+                         "Dimension 30 x 30\n" +
+                         "1 1.48958e-009 -1.65965e-012 -2.77457e-012 -3.55555e-012 1.91953e-012 -\n" +
+                         "1.03506e-012 -1.43633e-012 4.25822e-013 2.61491e-013 2.2636e-013 -1.98869e-\n" +
+                         "012 -4.92669e-012 9.29452e-012 7.38568e-013 -3.70903e-013 -1.17285e-010 -\n" +
+                         "</pre>";
 });
